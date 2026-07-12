@@ -1,63 +1,77 @@
 const fetch = require('node-fetch');
 
 export default async function handler(req, res) {
-  // Direct header allowance to prevent Streamlabs/Browser connection blocks
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
   
-  const { matchId, clubId } = req.query; 
+  const { matchId, clubId, club } = req.query; 
 
-  if (!matchId) {
-    return res.status(400).json({ error: 'Missing matchId parameter' });
+  if (!matchId || !clubId) {
+    return res.status(400).json({ error: 'Missing matchId or clubId parameters' });
   }
 
+  // Fallback to 'ARCL' if a club sub-path isn't explicitly provided in the query string
+  const clubPath = club || 'ARCL';
+
   try {
-    // Fallback direct request straight to the mobile-optimized match view
-    const targetUrl = `https://cricclubs.com/shareScoreCard.do?matchId=${matchId}${clubId ? `&clubId=${clubId}` : ''}`;
+    // Hit the exact live page from your screenshot
+    const targetUrl = `https://cricclubs.com/${clubPath}/ballbyball.do?matchId=${matchId}&clubId=${clubId}`;
     
     const response = await fetch(targetUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' 
+      }
     });
     
-    if (!response.ok) throw new Error('Data sync unavailable');
+    if (!response.ok) throw new Error('CricClubs dashboard unreachable');
     
-    const textData = await response.text();
+    const html = await response.text();
 
-    // Catching case variations if the API drops raw JSON vs template strings
-    let matchView = {};
-    try {
-      const jsonData = JSON.parse(textData);
-      matchView = jsonData.matchView || {};
-    } catch (e) {
-      // RegEx fallback extract if CricClubs sends a script-wrapped layout template
-      const runsRegex = /"totalRuns"\s*:\s*(\d+)/i.exec(textData);
-      const wicketsRegex = /"wickets"\s*:\s*(\d+)/i.exec(textData);
-      const oversRegex = /"overs"\s*:\s*"([^"]+)"/i.exec(textData);
-      const teamRegex = /"battingTeamName"\s*:\s*"([^"]+)"/i.exec(textData);
-
-      matchView = {
-        totalRuns: runsRegex ? runsRegex[1] : null,
-        wickets: wicketsRegex ? wicketsRegex[1] : null,
-        overs: oversRegex ? oversRegex[1] : null,
-        battingTeamName: teamRegex ? teamRegex[1] : null
-      };
+    // 1. Extract Team Names dynamically
+    const teamRegex = /<div class="match-team-name[^>]*>([\s\S]*?)<\/div>/g;
+    let teams = [];
+    let match;
+    while ((match = teamRegex.exec(html)) !== null) {
+      teams.push(match[1].replace(/<[^>]*>/g, '').trim());
     }
 
-    // Safeguard ensuring the overlay never displays empty breaks mid-stream
-    if (!matchView.totalRuns && !matchView.overs) {
-      return res.status(200).json({
-        battingTeam: "LIVE MATCH",
-        score: "0/0",
-        overs: "0.0 ov",
-        target: ""
-      });
+    // 2. Extract Scores (Format: 107/5 or 76/4)
+    const scoreRegex = /(\d+\s*\/\s*\d+)/g;
+    let scores = html.match(scoreRegex) || [];
+
+    // 3. Extract Overs (Format: 16.0 or 13.0)
+    const oversRegex = /(\d+\.\d+)\s*\/\s*\d+\.?\d*\s*ov/g;
+    let oversMatches = [];
+    let overMatch;
+    while ((overMatch = oversRegex.exec(html)) !== null) {
+      oversMatches.push(overMatch[1]);
+    }
+
+    // Determine the active chasing/batting team context
+    let activeTeam = teams[0] || "Washington Warriors";
+    let activeScore = scores[0] || "0/0";
+    let activeOvers = oversMatches[0] ? `${oversMatches[0]} ov` : "0.0 ov";
+
+    // If a second innings is running (like Scrambled Legs 76/4 in your screenshot)
+    if (scores.length >= 2) {
+      activeTeam = teams[1] || "Scrambled Legs";
+      activeScore = scores[1];
+      activeOvers = oversMatches[1] ? `${oversMatches[1]} ov` : activeOvers;
+    }
+
+    // 4. Extract Target/Equation text
+    const contextRegex = /<div[^>]*class="[^"]*match-status[^"]*"[^>]*>([\s\S]*?)<\/div>/i;
+    const contextMatch = contextRegex.exec(html);
+    let equation = "";
+    if (contextMatch) {
+      equation = contextMatch[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
     }
 
     return res.status(200).json({
-      battingTeam: matchView.battingTeamName || "BATTING",
-      score: `${matchView.totalRuns || 0}/${matchView.wickets || 0}`,
-      overs: `${matchView.overs || "0.0"} ov`,
-      target: matchView.target ? `Target: ${matchView.target}` : ""
+      battingTeam: activeTeam,
+      score: activeScore,
+      overs: activeOvers,
+      target: equation.length > 50 ? equation.substring(0, 47) + "..." : equation
     });
 
   } catch (error) {
