@@ -19,15 +19,18 @@ export default async function handler(req, res) {
 
     let matchData = [];
 
-    // Loop through each team block inside the match summary
-    $('.vsteam-image li.win, .vsteam-image li:not(.vs)').each((i, elem) => {
-      const teamName = $(elem).find('.teamName').text().replace(/<br>/g, '').trim();
+    // Target the team name spans directly
+    $('.teamName').each((i, elem) => {
+      const parentLi = $(elem).closest('li');
       
-      // Look for the score span right after or inside the team block
-      const score = $(elem).find('span').not('.teamName').text().trim();
+      // Clean up the text inside <span class="teamName">
+      const teamName = $(elem).text().replace(/[\r\n\t]+/g, ' ').replace('<br>', '').trim();
       
-      // Extract the overs from the paragraph tag
-      const rawOversText = $(elem).find('p').text().replace(/\s+/g, ' ').trim();
+      // Find the score span inside the same <li> block that isn't the team name
+      const score = parentLi.find('span').not('.teamName').text().trim();
+      
+      // Extract the overs from the paragraph tag in the same <li> block
+      const rawOversText = parentLi.find('p').text().replace(/\s+/g, ' ').trim();
       const currentOver = rawOversText.split('/')[0].trim();
 
       if (teamName) {
@@ -39,14 +42,14 @@ export default async function handler(req, res) {
       }
     });
 
-    // Extract the status message text (e.g., "20 runs needed...")
+    // Extract the status text message (e.g., "20 runs needed...")
     const targetText = $('h3').first().text().replace(/\s+/g, ' ').trim();
 
-    // Default to the first team (Innings 1)
-    let activeData = matchData[0] || { team: "UNKNOWN", score: "0/0", overs: "0.0" };
+    // Default to Innings 1 (Washington Warriors)
+    let activeData = matchData[0] || { team: "ERROR PARSING", score: "0/0", overs: "0.0" };
 
-    // If the second innings has started and has data, automatically switch the overlay focus to them
-    if (matchData.length >= 2 && matchData[1].score !== "" && matchData[1].score !== "0/0") {
+    // Automatically switch overlay focus if Innings 2 (Scrambled Legs) is actively chasing
+    if (matchData.length >= 2 && matchData[1].score && matchData[1].score !== "0/0") {
       activeData = matchData[1];
     }
 
