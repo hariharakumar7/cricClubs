@@ -2,7 +2,6 @@
   "name": "cricclubs-overlay",
   "version": "1.0.0",
   "dependencies": {
-    "node-fetch": "^2.7.0",
-    "cheerio": "^1.0.0-rc.12"
+    "node-fetch": "^2.7.0"
   }
 }
