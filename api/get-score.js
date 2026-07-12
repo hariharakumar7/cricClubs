@@ -15,7 +15,7 @@ export default async function handler(req, res) {
 
   try {
     // Hit the exact live page from your screenshot
-    const targetUrl = `https://cricclubs.com/${clubPath}/ballbyball.do?matchId=${matchId}&clubId=${clubId}`;
+    const targetUrl = `https://cricclubs.com/ARCL/ballbyball.do?matchId=13906&clubId=992`;
     
     const response = await fetch(targetUrl, {
       headers: { 
