@@ -67,7 +67,7 @@
         document.getElementById('overs').innerText = data.overs || "";
         document.getElementById('equation').innerText = data.target || "";
       } catch (err) {
-        // Left completely blank to drop update failures silently
+        console.error(err);
       }
     }
 
