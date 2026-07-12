@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const cheerio = require('cheerio');
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,62 +15,49 @@ export default async function handler(req, res) {
     });
     
     const html = await response.text();
+    const $ = cheerio.load(html);
 
-    // 1. Precise Team Extraction
-    const teamRegex = /<span class="teamName">([^<]+)/g;
-    let teams = [];
-    let teamMatch;
-    while ((teamMatch = teamRegex.exec(html)) !== null) {
-      teams.push(teamMatch[1].trim());
-    }
+    let matchData = [];
 
-    // 2. Precise Score Extraction (Find 107/5, 88/5, etc.)
-    const scoreRegex = /<span>(\d+\s*\/\s*\d+)<\/span>/g;
-    let scores = [];
-    let scoreMatch;
-    while ((scoreMatch = scoreRegex.exec(html)) !== null) {
-      scores.push(scoreMatch[1].trim());
-    }
-
-    // 3. Precise Overs Extraction (Cleans layout line breaks and grabs the current active over fraction)
-    const oversBlockRegex = /<p style="text-transform:\s*lowercase;">([\s\S]*?)<\/p>/g;
-    let overs = [];
-    let oversMatch;
-    while ((oversMatch = oversBlockRegex.exec(html)) !== null) {
-      // Clean space strings and extract just the first numeric value before the "/"
-      const rawOversText = oversMatch[1].replace(/\s+/g, ' ').trim();
+    // Loop through each team block inside the match summary
+    $('.vsteam-image li.win, .vsteam-image li:not(.vs)').each((i, elem) => {
+      const teamName = $(elem).find('.teamName').text().replace(/<br>/g, '').trim();
+      
+      // Look for the score span right after or inside the team block
+      const score = $(elem).find('span').not('.teamName').text().trim();
+      
+      // Extract the overs from the paragraph tag
+      const rawOversText = $(elem).find('p').text().replace(/\s+/g, ' ').trim();
       const currentOver = rawOversText.split('/')[0].trim();
-      overs.push(currentOver);
-    }
 
-    // 4. Match Status Header Extraction (20 runs needed...)
-    const statusRegex = /<h3>([\s\S]*?)<\/h3>/i;
-    const statusMatch = statusRegex.exec(html);
-    let equation = "";
-    if (statusMatch) {
-      equation = statusMatch[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-    }
+      if (teamName) {
+        matchData.push({
+          team: teamName,
+          score: score || "0/0",
+          overs: currentOver || "0.0"
+        });
+      }
+    });
 
-    // Determine target batting active values (2nd Innings: Scrambled Legs in this example)
-    let activeTeam = teams[1] || "SCRAMBLED LEGS";
-    let activeScore = scores[1] || "88/5";
-    let activeOver = overs[1] || "14.4";
+    // Extract the status message text (e.g., "20 runs needed...")
+    const targetText = $('h3').first().text().replace(/\s+/g, ' ').trim();
 
-    // Fallback logic if 2nd Innings hasn't started yet
-    if (!scores[1]) {
-      activeTeam = teams[0] || "WASHINGTON WARRIORS";
-      activeScore = scores[0] || "0/0";
-      activeOver = overs[0] || "0.0";
+    // Default to the first team (Innings 1)
+    let activeData = matchData[0] || { team: "UNKNOWN", score: "0/0", overs: "0.0" };
+
+    // If the second innings has started and has data, automatically switch the overlay focus to them
+    if (matchData.length >= 2 && matchData[1].score !== "" && matchData[1].score !== "0/0") {
+      activeData = matchData[1];
     }
 
     return res.status(200).json({
-      battingTeam: activeTeam.toUpperCase(),
-      score: activeScore,
-      overs: `(${activeOver} ov)`,
-      target: equation
+      battingTeam: activeData.team.toUpperCase(),
+      score: activeData.score,
+      overs: `(${activeData.overs} ov)`,
+      target: targetText
     });
 
   } catch (error) {
-    return res.status(500).json({ error: "Parsing failed" });
+    return res.status(500).json({ error: "DOM parsing failed" });
   }
 }
