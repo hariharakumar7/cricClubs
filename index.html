@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Score Overlay</title>
+  <style>
+    /* Keeps everything transparent except the graphic bar itself */
+    body, html {
+      margin: 0; padding: 0;
+      background: transparent;
+      overflow: hidden;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    .overlay-container {
+      position: absolute;
+      bottom: 30px;
+      left: 30px;
+      display: flex;
+      align-items: center;
+      background: rgba(20, 24, 33, 0.92);
+      color: #ffffff;
+      border-radius: 6px;
+      padding: 12px 24px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      border-left: 6px solid #fdd835; /* Accent team bar color */
+    }
+
+    .team-name {
+      font-size: 20px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-right: 20px;
+    }
+
+    .live-score {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fdd835;
+    }
+
+    .overs-count {
+      font-size: 18px;
+      font-weight: 500;
+      color: #a0aec0;
+      margin-left: 14px;
+    }
+
+    .target-info {
+      font-size: 14px;
+      color: #fc8181;
+      margin-left: 15px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="overlay-container">
+    <div id="team" class="team-name">LOADING MATCH</div>
+    <div id="score" class="live-score">--/--</div>
+    <div id="overs" class="overs-count">(-- ov)</div>
+    <div id="target" class="target-info"></div>
+  </div>
+
+  <script>
+    // --- MATCH DAY PARAMETERS ---
+    // Extract parameters directly from your widget URL string automatically
+    const urlParams = new URLSearchParams(window.location.search);
+    const matchId = urlParams.get('matchId') || 'YOUR_DEFAULT_MATCH_ID';
+    const clubId = urlParams.get('clubId') || 'YOUR_DEFAULT_CLUB_ID';
+
+    const API_ENDPOINT = `/api/get-score?matchId=${matchId}&clubId=${clubId}`;
+
+    async function pollLiveScore() {
+      try {
+        const res = await fetch(API_ENDPOINT);
+        if (!res.ok) return;
+        
+        const data = await res.json();
+        
+        if (data.score) {
+          document.getElementById('team').innerText = data.battingTeam;
+          document.getElementById('score').innerText = data.score;
+          document.getElementById('overs').innerText = `(${data.overs})`;
+          document.getElementById('target').innerText = data.target || "";
+        }
+      } catch (err) {
+        console.error("Data refresh failed", err);
+      }
+    }
+
+    // Instantly check for data updates every 5 seconds on the field
+    pollLiveScore();
+    setInterval(pollLiveScore, 5000);
+  </script>
+</body>
+</html>
